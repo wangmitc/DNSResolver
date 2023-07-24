@@ -10,10 +10,12 @@ def errorFound(message):
 
 def readHints():
     rootNamesToIp = {}
+
     #read in root hints file
     with open("named.root", "r") as hintsFile:
         currRootName = ""
         for line in hintsFile.readlines():
+
             # if shows name server
             if re.search(r"^\.", line):
                 # get name of server
@@ -23,7 +25,6 @@ def readHints():
                 rootNamesToIp[currRootName] = re.split(' +', line)[3].strip()
                 # stops from getting IPv6
                 currRootName = ""
-
     return rootNamesToIp
 
 def main():
@@ -47,22 +48,62 @@ def main():
 
     #listen for connections
     sock.listen(1)
-    try:
-        while True:
-            #create connection
-            conn, address = sock.accept()
-            print(conn)
-            data = conn.recv(1024)
-            print("recieved request")
-            query = pickle.loads(data)
+    while True:
+        #create connection
+        conn, address = sock.accept()
+        data = conn.recv(1024)
+        print("recieved request")
+        query = pickle.loads(data)
+        print(query)
+        
+        #look for answer
+        nameSect = query['name'].split('.')
+        nameSect.reverse()
 
-            conn.close()
-    except KeyboardInterrupt:
-        print("interuppted")
+        numQueries = 1
+        answer = list(rootHints.keys())[0]
+        currName = ""
+        nsOutput = ""
+        ansResp = {}
+        ansResp["aa"] = True
+        # check if authoritative answer is not found
+        while ((currName != query['name']) and (re.search(r';; flags:[^;]* aa [^;]*;', (nsOutput := os.popen(f"dig @{answer} {query['name']} NS").read())) == None)):
+            #check if non authoritive answer is given (cached data)
+            if re.search(f';; ANSWER SECTION:', nsOutput):
+                ansResp["aa"] = False
+                break
+            print(nsOutput)
+            # find next name server
+            currName = nameSect[:numQueries]
+            currName.reverse()
+            currName = ".".join(currName) + "."
+            for line in nsOutput.splitlines():
+                if re.match(rf"^{currName}", line):
+                    break
+            answer = re.split('\t+', line)[4].strip()
+            numQueries += 1
 
+        # get IP
+        nsOutput = os.popen(f"dig @{answer} {query['name']} A").read()
+        print(nsOutput)
+        print()
+        for line in nsOutput.splitlines():
+            if flags := re.findall(r';; flags:[^;]*;', line):
+                ansResp['tr'] = re.findall(r';; flags:[^;]* tr [^;]*;', flags[0]) != []
+            elif re.match(rf"^;{currName}", line):
+                # question = line
+                ansResp["question"] = line
+            elif re.match(rf"^{currName}", line):
+                # answer = re.split('\t+', line)[4].strip()
+                print(nsOutput, end="")
+                ansResp["answer"] = line
+                response = pickle.dumps(ansResp)
+                conn.sendall(response)
+                break
 
-
-
+        conn.close()
+    #     break
+    # sock.close()
 
 if __name__ == "__main__":
     main()

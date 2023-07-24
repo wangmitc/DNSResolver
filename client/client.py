@@ -3,8 +3,6 @@ import pickle
 import sys
 import re
 
-
-
 def errorFound(message):
     print(f"Error: {message}")
     exit()
@@ -16,21 +14,24 @@ def queryResolver(domainName, host, port):
     sock.connect((host, port))
 
     # construct DNS query
-    query = {"name":domainName,"type":"A", "class": "A"}
+    query = {"name":domainName,"type":"A", "class": "IN"}
     queryData = pickle.dumps(query)
-    print(queryData)
+
     # send query
     sock.sendall(queryData)
     data = None
+
     # wait for response from resolver
     while data == None:
         try:
             data = sock.recv(1024)
+            response = pickle.loads(data)
         except timeout:
             break
+
     # recieve response from resolver
     sock.close()
-    return data
+    return response
 
 def main():
     #check number of command line args
@@ -58,7 +59,11 @@ def main():
     results = queryResolver(domainName, resolverIP, resolverPort)
 
     # display results
-    print(results)
+    print(f";; FLAGS: {'aa ' if results['aa'] else ''} {'tr ' if results['tr'] else ''}\n")
+    print(";; QUESTION SECTION")
+    print(results['question'] + "\n")
+    print(";; ANSWER SECTION:")
+    print(results['answer'])
 
 if __name__ == "__main__":
     main()
