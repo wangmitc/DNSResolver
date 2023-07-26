@@ -2,30 +2,61 @@ from socket import *
 import pickle
 import sys
 import re
+import random
+import struct
 
 def errorFound(message):
     print(f"Error: {message}")
     exit()
 
+def formatDomain(domainName):
+    dnsQuery = b''
+    for domainPart in domainName.split("."):
+        dnsQuery += struct.pack("!B", len(domainPart))
+        for character in domainPart:
+            dnsQuery += struct.pack("!c", character.encode('utf-8'))
+    dnsQuery += struct.pack('!b', 0)
+    return dnsQuery
+
+
+def createQuery(domainName):
+    query_id = random.randint(0, 65535)
+    flags = 0
+    qst = 1
+    ans = 0
+    auth = 0
+    add = 0
+
+    # DNS header
+    dnsHeader = struct.pack("!HHHHHH", query_id, 0, qst, ans, auth, add)
+    #DNS question
+    dnsQuestion = formatDomain(domainName)
+    dnsQuestion += struct.pack('!HH', 1, 1)
+    return dnsHeader + dnsQuestion
+
+
+
 def queryResolver(domainName, host, port):
     # create socket
     sock = socket(AF_INET, SOCK_STREAM) # UDP
-    sock.settimeout(2)
+    sock.settimeout(30)
     sock.connect((host, port))
 
     # construct DNS query
-    query = {"name":domainName,"type":"A", "class": "IN"}
-    queryData = pickle.dumps(query)
-
+    queryData = createQuery(domainName)
+    #query = {"name":domainName,"type":"A", "class": "IN"}
+    # queryData = pickle.dumps(query)
+    query = {"queryName": formatDomain(domainName), "data": queryData}
     # send query
-    sock.sendall(queryData)
+    # sock.sendall(queryData)
+    sock.sendall(pickle.dumps(query))
     data = None
 
     # wait for response from resolver
     while data == None:
         try:
             data = sock.recv(1024)
-            response = pickle.loads(data)
+            response = data.decode()
         except timeout:
             break
 
@@ -59,11 +90,11 @@ def main():
     results = queryResolver(domainName, resolverIP, resolverPort)
 
     # display results
-    print(f";; FLAGS: {'aa ' if results['aa'] else ''} {'tr ' if results['tr'] else ''}\n")
-    print(";; QUESTION SECTION")
-    print(results['question'] + "\n")
-    print(";; ANSWER SECTION:")
-    print(results['answer'])
+    # print(f";; FLAGS: {'aa ' if results['aa'] else ''} {'tr ' if results['tr'] else ''}\n")
+    # print(";; QUESTION SECTION")
+    # print(results['question'] + "\n")
+    # print(";; ANSWER SECTION:")
+    # print(results['answer'])
 
 if __name__ == "__main__":
     main()
