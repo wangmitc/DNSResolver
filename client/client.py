@@ -28,7 +28,7 @@ def createQuery(domainName):
     add = 0
 
     # DNS header
-    dnsHeader = struct.pack("!HHHHHH", query_id, 0, qst, ans, auth, add)
+    dnsHeader = struct.pack("!HHHHHH", query_id, flags, qst, ans, auth, add)
     #DNS question
     dnsQuestion = formatDomain(domainName)
     dnsQuestion += struct.pack('!HH', 1, 1)
