@@ -2,7 +2,6 @@ from socket import *
 import pickle
 import sys
 import re
-import os
 import struct
 
 def errorFound(message):
@@ -16,7 +15,6 @@ def readHints():
     with open("named.root", "r") as hintsFile:
         currRootName = ""
         for line in hintsFile.readlines():
-
             # if shows name server
             if re.search(r"^\.", line):
                 # get name of server
@@ -29,7 +27,10 @@ def readHints():
     return rootNamesToIp
 
 def decodeIP(response, offset, rdLength):
+    #get chars of the ip
     ipChars = struct.unpack_from(f">{'B' * rdLength}", response, offset)
+
+    # format the ip
     ip = ""
     for char in ipChars:
         ip += f"{str(char)}."
@@ -41,14 +42,14 @@ def decodeName(response, offset):
     char = None
     isPointer = False
 
-    # get all char for name
+    # get all char for name, until null terminator
     while (char := struct.unpack_from(f">B", response, offset)[0]) != 0:
         # check if name field is pointer (first two bytes are 1)
         if char >= 192:
             # go to pointer address
             # (char << 8) >= 0b1100000000000000
             # offset = char << 8 + (next pointer bit) - 0b1100000000000000 - 1
-            offset = ((char << 8) + struct.unpack_from(">B", response, offset + 1)[0] - 0xc000) - 1
+            offset = (char + struct.unpack_from(">B", response, offset + 1)[0] - 0xc0) - 1
             isPointer = True
         else:
             nameChars.append(char)
@@ -81,20 +82,21 @@ def decodeResponse(response, queryName):
     # flags
     flags = header[1]
     print(flags)
-    #use masks and bit shifts to extract each flag 
-    # qr
+    #use masks and bit shifts to extract each flag (bit 0 to 15)
+    # qr (0th bit in flags)
     msgHeader["id"] = flags >> 15
-    # opcode
+    # opcode (1-4th bits in flags)
     msgHeader["opcode"] = (flags & 0x7800) >> 11
-    # aa
+    # aa (5th bit in flags)
     msgHeader["aa"] = (flags & 0x0400) >> 10
-    # tc
+    # tc (6th bit in flags)
     msgHeader["tc"] = (flags & 0x0200) >> 9
-    # rd
+    # rd (7th bit in flags)
     msgHeader["rd"] = (flags & 0x0100) >> 8
-    # ra
+    # ra (8th bit in flags)
     msgHeader["ra"] = (flags & 0x0080) >> 7
-    # rcode
+    # (Note: reserved field is 9-11th bits. not needed)
+    # rcode (12-15th bits in flags) 
     msgHeader["rcode"] = (flags & 0x000f)
 
     # number of entries in each section
@@ -131,12 +133,12 @@ def decodeResponse(response, queryName):
         if ansType == 1:
             # Type A: get ip
             print("found answer")
-            ip = {"name": name, "ansType": ansType, "ansClass": ansClass, "ttl": ttl, "rdLength": rdLength, "data": decodeIP(response, offset, rdLength)}
+            ip = {"name": name['name'], "ansType": ansType, "ansClass": ansClass, "ttl": ttl, "rdLength": rdLength, "data": decodeIP(response, offset, rdLength)}
             answers.append(ip)
 
         if ansType == 2:
             # Type NS: get name server
-            nameServer = {"name": name, "ansType": ansType, "ansClass": ansClass, "ttl": ttl, "rdLength": rdLength, "data": decodeName(response, offset)["name"]}
+            nameServer = {"name": name['name'], "ansType": ansType, "ansClass": ansClass, "ttl": ttl, "rdLength": rdLength, "data": decodeName(response, offset)["name"]}
             print(nameServer)
             answers.append(nameServer)
             offset += rdLength
@@ -163,59 +165,52 @@ def main():
     #bind socket to host and port
     sock.bind((host, port))
     print('socket binding complete')
-    answer = False
-    nameServers = list(rootHints.keys())
     #listen for connections
     sock.listen(1)
-    # create connection
-    conn, address = sock.accept()
-    query = conn.recv(1024)
-    query = pickle.loads(query)
-    print(query)
-    while not answer:
+    while True:
+        answer = False
+        nameServers = list(rootHints.keys())
         # create connection
-        # conn, address = sock.accept()
-        # query = conn.recv(1024)
-        # query = pickle.loads(query)
-        # print(query)
+        conn, address = sock.accept()
+        query = conn.recv(1024)
+        query = pickle.loads(query)
+        print(query)
+        while not answer:
+            # look for answer
+            # answer = list(rootHints.keys())[0]
+            for server in nameServers:
+                #create socket
+                iterSock = socket(AF_INET, SOCK_DGRAM)
+                iterSock.settimeout(20)
+                print(server)
+                iterSock.connect((server, 53))
+                iterSock.sendall(query["data"])
+                data = None
+                # wait for response from name server
+                while data == None:
+                    try:
+                        data = iterSock.recv(1024)
+                        print("got data:")
+                        print(data)
+                    except timeout:
+                        break
+                iterSock.close()
 
-        # look for answer
-        # answer = list(rootHints.keys())[0]
-        for server in nameServers:
-            #create socket
-            iterSock = socket(AF_INET, SOCK_DGRAM)
-            iterSock.settimeout(20)
-            print(server)
-            iterSock.connect((server, 53))
-            iterSock.sendall(query["data"])
-            data = None
-            # wait for response from name server
-            while data == None:
-                try:
-                    data = iterSock.recv(1024)
-                    print("got data:")
-                    print(data)
-                    
-                except timeout:
+                # check if response was recived
+                if data != None:
+                    #decode response
+                    response = decodeResponse(data, query["queryName"])
+                    #check if answer was found or an error was found
+                    if response["header"]["ans"] > 0 or response["header"]["rcode"] != 0:
+                        answer = True
+                    else:
+                        # update list of name servers to check
+                        nameServers = [ server["data"] for server in response["data"]]
+                        print("hola")
+                        print(nameServers)
                     break
-            iterSock.close()
-            # check if response was recived
-            if data != None:
-                #decode response
-                response = decodeResponse(data, query["queryName"])
-                #check if answer was found
-                if response["header"]["ans"] > 0:
-                    answer = True
-                else:
-                    # update list of name servers to check
-                    nameServers = [ server["data"] for server in response["data"]]
-                    print("hola")
-                    print(nameServers)
-                break
-
-
-    conn.close()
-        # break
+        conn.sendall(pickle.dumps(response))
+        conn.close()
     sock.close()
 
 if __name__ == "__main__":

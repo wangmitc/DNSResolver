@@ -5,6 +5,10 @@ import re
 import random
 import struct
 
+# constants
+DNS_RECORD_TYPES = {1: "A", 2: "NS"}
+
+
 def errorFound(message):
     print(f"Error: {message}")
     exit()
@@ -56,7 +60,7 @@ def queryResolver(domainName, host, port):
     while data == None:
         try:
             data = sock.recv(1024)
-            response = data.decode()
+            response = pickle.loads(data)
         except timeout:
             break
 
@@ -88,13 +92,21 @@ def main():
     
     # intiate query to resolver
     results = queryResolver(domainName, resolverIP, resolverPort)
-
+    print(results)
+    if results["header"]["rcode"] != 0:
+        print("error")
+        exit()
     # display results
-    # print(f";; FLAGS: {'aa ' if results['aa'] else ''} {'tr ' if results['tr'] else ''}\n")
-    # print(";; QUESTION SECTION")
-    # print(results['question'] + "\n")
-    # print(";; ANSWER SECTION:")
-    # print(results['answer'])
+    print(";; Got answer:")
+    print(f";; ->>HEADER<<- opcode: {results['header']['opcode']}")
+    print(f";; FLAGS: {'aa ' if results['header']['aa'] else ''} {'tr ' if results['header']['tc'] else ''}\n")
+    print(";; QUESTION SECTION")
+    # print(f"{results['data'][0]['name']} \n")
+    print(f";{results['data'][0]['name']} {DNS_RECORD_TYPES[results['data'][0]['ansType']]} IN\n")
+
+    print(";; ANSWER SECTION:")
+    for i in range(len(results['data'])):
+        print(results['data'][i]['data'])
 
 if __name__ == "__main__":
     main()
