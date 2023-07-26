@@ -4,7 +4,6 @@ import sys
 import re
 import os
 import struct
-# from dnslib import DNSRecord
 
 def errorFound(message):
     print(f"Error: {message}")
@@ -29,13 +28,21 @@ def readHints():
                 currRootName = ""
     return rootNamesToIp
 
+def decodeIP(response, offset, rdLength):
+    ipChars = struct.unpack_from(f">{'B' * rdLength}", response, offset)
+    ip = ""
+    for char in ipChars:
+        ip += f"{str(char)}."
+    print(ip)
+    return ip[:-1]
+
 def decodeName(response, offset):
     nameChars = []
     char = None
     isPointer = False
 
     # get all char for name
-    while (char := struct.unpack_from(">B", response, offset)[0]) != 0:
+    while (char := struct.unpack_from(f">B", response, offset)[0]) != 0:
         # check if name field is pointer (first two bytes are 1)
         if char >= 192:
             # go to pointer address
@@ -102,53 +109,41 @@ def decodeResponse(response, queryName):
 
     add = header[5]
     msgHeader["add"] = add
-    # print(x_id, qr, opcode, aa, tc, rd, ra, rcode, qst, ans, auth, add)
 
     #skip question section
     offset = 16 + len(queryName)
     
-    # offset += 10
-    # if there are answers
-    if ans > 0:
-        # unpack answer data
-        print("found answer")
-        # name = decodeName(response, offset)
-        # offset += name["length"]
-        # ansFields = struct.unpack_from(">HHIH", response, offset)
-        # ansType = ansFields[0]
-        # ansClass = ansFields[1]
-        # ttl = ansFields[2]
-        # rdLength = ansFields[3]
-        # offset += name["length"] + 10
-        # if ansType == 1:
-        #     #A Type
-        #     decodeName(response, offset)
-        return {}
-    else:
-        #unpack the authority section data
-        nameServers = []
-        print(auth)
-        for i in range(auth):
-            # get name
-            name = decodeName(response, offset)
-            offset += name["length"]
+    #unpack the authority section data
+    answers = []
+    count = ans if ans > 0 else auth
+    for i in range(count):
+        # get name
+        name = decodeName(response, offset)
+        offset += name["length"]
 
-            #get answer fields
-            ansFields = struct.unpack_from(">HHIH", response, offset)
-            ansType = ansFields[0]
-            ansClass = ansFields[1]
-            ttl = ansFields[2]
-            rdLength = ansFields[3]
+        #get answer fields
+        ansFields = struct.unpack_from(">HHIH", response, offset)
+        ansType = ansFields[0]
+        ansClass = ansFields[1]
+        ttl = ansFields[2]
+        rdLength = ansFields[3]
+        offset += 10
+        if ansType == 1:
+            # Type A: get ip
+            print("found answer")
+            ip = {"name": name, "ansType": ansType, "ansClass": ansClass, "ttl": ttl, "rdLength": rdLength, "data": decodeIP(response, offset, rdLength)}
+            answers.append(ip)
 
-            # get name server
-            offset += 10
+        if ansType == 2:
+            # Type NS: get name server
             nameServer = {"name": name, "ansType": ansType, "ansClass": ansClass, "ttl": ttl, "rdLength": rdLength, "data": decodeName(response, offset)["name"]}
             print(nameServer)
-            nameServers.append(nameServer)
+            answers.append(nameServer)
             offset += rdLength
-        print(nameServers)
-        msg = {"header": msgHeader, "auth": nameServers}
-        return msg
+
+    print(answers)
+    msg = {"header": msgHeader, "data": answers}
+    return msg
     
 
 def main():
@@ -213,13 +208,13 @@ def main():
                     answer = True
                 else:
                     # update list of name servers to check
-                    nameServers = [ server["data"] for server in response["auth"]]
+                    nameServers = [ server["data"] for server in response["data"]]
                     print("hola")
                     print(nameServers)
                 break
 
 
-        conn.close()
+    conn.close()
         # break
     sock.close()
 
