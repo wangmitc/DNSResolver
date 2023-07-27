@@ -49,15 +49,17 @@ def findAnswer(query, timeout):
             if data != None:
                 #decode response
                 response = decodeResponse(data)
+                print(response["header"]["aa"] == 1)
                 print(response)
                 # if given a CNAME instead of answer being looked for, restart query with the CNAME
-                if len(response["data"]) == 1 and response["data"][0]["ansType"] != response["question"]["qstType"]:
+                if len(response["data"]) == 1 and response["data"][0]["ansType"] != response["question"]["qstType"] and response["data"][0]["ansType"] == 5:
                     # print(response["data"][0])
                     query = createQuery(response["data"][0]["data"][:-1], response["question"]["qstType"])
                     data = findAnswer(query, timeout)
                     answer = True
-                #check if answer was found or an error was found (check for server error and no more servers)
-                elif response["header"]["ans"] > 0 or (response["header"]["rcode"] != 0 and (response["header"]["rcode"] != 2 or (index == len(nameServers) - 1))):
+                #check if answer was found or an error was found (check for server error and no more servers) or aa flag was set (SOA)
+                elif response["header"]["ans"] > 0 or response["header"]["aa"] == 1 or (response["header"]["rcode"] != 0 and (response["header"]["rcode"] != 2 or (index == len(nameServers) - 1))):
+                    print("========================= hi hi=========================")
                     answer = True
                 elif response["header"]["rcode"] == 2:
                     # if server error an

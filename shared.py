@@ -67,7 +67,7 @@ def createQuery(domainName, queryType):
     ans = 0
     auth = 0
     add = 0
-    
+
     # DNS header
     dnsHeader = struct.pack("!HHHHHH", query_id, flags, qst, ans, auth, add)
     #DNS question
@@ -131,6 +131,7 @@ def decodeResponse(response):
     for i in range(count):
         # get name
         name = decodeName(response, offset)
+        print("Name")
         offset += name["length"]
 
         #get answer fields
@@ -145,9 +146,10 @@ def decodeResponse(response):
             ip = {"name": name['name'], "ansType": ansType, "ansClass": ansClass, "ttl": ttl, "rdLength": rdLength, "data": decodeIP(response, offset, rdLength)}
             print(ip)
             answers.append(ip)
-        elif ansType == 2 or ansType == 5:
+        elif ansType == 2 or ansType == 5 or ansType == 12 or ansType == 15:
             nameServer = {"name": name['name'], "ansType": ansType, "ansClass": ansClass, "ttl": ttl, "rdLength": rdLength, "data": decodeName(response, offset)["name"]}
             answers.append(nameServer)
+
         offset += rdLength
     
     # filter out duplicate answers

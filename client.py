@@ -44,14 +44,23 @@ def main():
         resolverPort = int(sys.argv[2])
     except ValueError:
         errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name type [timeout=5]")
-    resolverPort = int(sys.argv[2])
     domainName = sys.argv[3]
     queryType = sys.argv[4].upper()
     timeout = 5
 
-    # check domain name (only allow alphanumeric characters, hyphens and dots)
-    if re.match(r"[^A-Za-z0-9\-\.]", domainName):
+    #check query type
+    if queryType not in DNS_RECORD_TYPES.values():
         errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name type [timeout=5]")
+
+    if queryType == "PTR":
+        # check domain IP 
+        if re.match(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}", domainName) == None:
+            errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name type [timeout=5]")
+        domainName += ".in-addr.arpa"
+    else:
+        # check domain name (only allow alphanumeric characters, hyphens and dots)
+        if re.match(r"[^A-Za-z0-9\-\.]", domainName):
+            errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name type [timeout=5]")
 
     # check resolverIP 
     if re.match(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}", resolverIP) == None:
@@ -59,10 +68,6 @@ def main():
 
     # check resolver port is in between (1024-65535) inclusive
     if resolverPort not in range(1024, 65536):
-        errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name type [timeout=5]")
-    
-    #check query type
-    if queryType not in DNS_RECORD_TYPES.values():
         errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name type [timeout=5]")
 
     if len(sys.argv) == 6:
@@ -99,9 +104,10 @@ def main():
     print(f";; ->>HEADER<<- opcode: {results['header']['opcode']}")
     print(f";; FLAGS: {'aa ' if results['header']['aa'] else ''} {'tr ' if results['header']['tc'] else ''}\n")
     print(";; QUESTION SECTION")
-    print(f";{results['data'][0]['name']} {DNS_RECORD_TYPES[results['data'][0]['ansType']]} IN\n")
+    print(f";{domainName} {queryType} IN\n")
 
     print(";; ANSWER SECTION:")
+    # if results["header"]["ans"] > 0:
     for i in range(len(results['data'])):
         print(results['data'][i]['data'])
 
