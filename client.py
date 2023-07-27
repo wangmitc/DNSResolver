@@ -5,6 +5,8 @@ from shared import errorFound, decodeResponse, createQuery
 
 # CONSTANTS
 DNS_RECORD_TYPES = {1: "A", 2: "NS", 5: "CNAME", 12: "PTR", 15: "MX"}
+OP_CODE = {0: "QUERY", 1: "REPLY"}
+RCODE = {0: "NOERROR", 1: "FORMERR", 2: "SERVFAIL", 3: "NXDOMAIN", 4: "NOTIMP", 5: "REFUSED"}
 
 def queryResolver(domainName, host, port, timeout, queryType):
     # create socket
@@ -96,14 +98,14 @@ def main():
     
     # display results
     print(";; Got answer:")
-    print(f";; ->>HEADER<<- opcode: {results['header']['opcode']}")
-    print(f";; FLAGS: {'aa ' if results['header']['aa'] else ''} {'tr ' if results['header']['tc'] else ''}\n")
+    print(f";; ->>HEADER<<- opcode: {OP_CODE[results['header']['opcode']]}, status: {RCODE[results['header']['rcode']]}, id: {results['header']['id']}")
+    print(f";; FLAGS: {'aa ' if results['header']['aa'] else ''} {'tr ' if results['header']['tc'] else ''}; QUERY:{results['header']['qst']}, ANSWER:{results['header']['ans']}\n")
     print(";; QUESTION SECTION")
-    print(f";{domainName} {queryType} IN\n")
+    print(f";{domainName}           IN    {queryType}\n")
 
     print(";; ANSWER SECTION:")
     for i in range(len(results['data'])):
-        print(results['data'][i]['data'])
+        print(f"{results['data'][i]['name']}    {results['data'][i]['ttl']}    IN    {DNS_RECORD_TYPES[results['data'][i]['ansType']]}    {results['data'][i]['data']}")
 
 if __name__ == "__main__":
     main()
