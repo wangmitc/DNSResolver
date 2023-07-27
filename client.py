@@ -46,7 +46,7 @@ def main():
         errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name type [timeout=5]")
     resolverPort = int(sys.argv[2])
     domainName = sys.argv[3]
-    queryType = sys.argv[4]
+    queryType = sys.argv[4].upper()
     timeout = 5
 
     # check domain name (only allow alphanumeric characters, hyphens and dots)
