@@ -2,7 +2,7 @@ import struct
 import random
 
 # CONSTANTS
-NAME_POINTER_MASK = 0xc0 #1100000000000000
+NAME_POINTER_MASK = 0xc0 #0000000011000000
 OPCODE_MASK = 0x7800     #0111100000000000
 AA_MASK = 0x0400         #0000010000000000
 TC_MASK = 0x0200         #0000001000000000
@@ -54,7 +54,7 @@ def decodeName(response, offset):
             partLen -= 1
     name += "."
 
-    # name section olength is variable as it is could be a pointer (2 bytes) or full domain name (variable bytes)
+    # name section length is variable as it is could be a pointer (2 bytes) or full domain name (variable bytes)
     return {"name": name[1:], "length": (len(nameChars) + 1) if not isPointer else 2}
 
 def formatDomain(domainName):
