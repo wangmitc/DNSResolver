@@ -80,10 +80,15 @@ def main():
     if len(sys.argv) < 2 :
         errorFound("Invalid arguments\nUsage: resolver port [timeout=5]")
     host = '127.0.0.1'
+    
     try:
         port = int(sys.argv[1])
     except ValueError:
         errorFound("Invalid arguments\nUsage: resolver port [timeout=5]")
+    # check port is in between (1024-65535) inclusive
+    if port not in range(1024, 65536):
+        errorFound("Invalid arguments\nUsage: resolver port [timeout=5]")
+
     timeout = 5
     if len(sys.argv) == 3:
         try:
