@@ -76,9 +76,7 @@ def createQuery(domainName, queryType):
     return dnsHeader + dnsQuestion
 
 
-def decodeResponse(response, queryName):
-    # print(response)
-    print(queryName)
+def decodeResponse(response):
     #unpack the header
     header = struct.unpack_from(">HHHHHH", response, 0)
     msgHeader = {}

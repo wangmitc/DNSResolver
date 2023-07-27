@@ -1,9 +1,7 @@
 import socket
-import pickle
 import sys
 import re
-import struct
-from shared import errorFound, formatDomain, createQuery, decodeResponse
+from shared import errorFound, createQuery, decodeResponse
 
 def readHints():
     rootNamesToIp = {}
@@ -26,9 +24,6 @@ def readHints():
 # find answer
 def findAnswer(query, timeout):
     answer = False
-    # #create query
-    # queryData = createQuery(domainName, queryType)
-    # query = {"queryName": formatDomain(domainName), "data": queryData}
     #read in root hints file
     rootHints = readHints()
     nameServers = list(rootHints.keys())
@@ -53,7 +48,7 @@ def findAnswer(query, timeout):
             # check if response was recived
             if data != None:
                 #decode response
-                response = decodeResponse(data, query)
+                response = decodeResponse(data)
                 print(response)
                 # if given a CNAME instead of answer being looked for, restart query with the CNAME
                 if len(response["data"]) == 1 and response["data"][0]["ansType"] != response["question"]["qstType"]:

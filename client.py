@@ -1,9 +1,6 @@
 import socket
-import pickle
 import sys
 import re
-import random
-import struct
 from shared import errorFound, formatDomain, decodeResponse, createQuery
 
 # constants
@@ -72,7 +69,7 @@ def main():
     
     # intiate query to resolver
     response = queryResolver(domainName, resolverIP, resolverPort, timeout, queryType)
-    results = decodeResponse(response, formatDomain(domainName))
+    results = decodeResponse(response)
     print(results)
 
     # handle returned error codes
