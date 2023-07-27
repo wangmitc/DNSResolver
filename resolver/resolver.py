@@ -1,4 +1,4 @@
-from socket import *
+import socket
 import pickle
 import sys
 import re
@@ -36,7 +36,6 @@ def decodeIP(response, offset, rdLength):
     ip = ""
     for char in ipChars:
         ip += f"{str(char)}."
-    print(ip)
     return ip[:-1]
 
 def decodeName(response, offset):
@@ -74,16 +73,14 @@ def decodeName(response, offset):
     # name section olength is variable as it is could be a pointer (2 bytes) or full domain name (variable bytes)
     return {"name": name[1:], "length": (len(nameChars) + 1) if not isPointer else 2}
 
-def decodeResponse(response, queryName, queryType):
+def decodeResponse(response, queryName, queryType, timeout):
     #unpack the header
     header = struct.unpack_from(">HHHHHH", response, 0)
-    # print(header)
     msgHeader = {}
     #MessageID
     msgHeader["id"] = header[0]
     # flags
     flags = header[1]
-    # print(flags)
     #use masks and bit shifts to extract each flag (bit 0 to 15)
     # qr (0th bit in flags)
     msgHeader["id"] = flags >> 15
@@ -113,15 +110,12 @@ def decodeResponse(response, queryName, queryType):
 
     add = header[5]
     msgHeader["add"] = add
-    print(header)
-    #skip question section
+    #skip question name
     offset = 16 + len(queryName)
     
     #unpack the authority section data
     answers = []
     count = ans if ans > 0 else auth
-    print(f"ans {ans}, auth {auth}, ")
-    print(f"query type: {queryType}")
     for i in range(count):
         # get name
         name = decodeName(response, offset)
@@ -129,30 +123,23 @@ def decodeResponse(response, queryName, queryType):
 
         #get answer fields
         ansFields = struct.unpack_from(">HHIH", response, offset)
-        # print(ansFields)
         ansType = ansFields[0]
         ansClass = ansFields[1]
         ttl = ansFields[2]
         rdLength = ansFields[3]
         offset += 10
-        print(f"ansType {ansType}")
-        print(decodeIP(response, offset, rdLength))
         if ansType == 1:
-            print(ansClass)
             # Type A: get ip
-            print("found answer")
             ip = {"name": name['name'], "ansType": ansType, "ansClass": ansClass, "ttl": ttl, "rdLength": rdLength, "data": decodeIP(response, offset, rdLength)}
             answers.append(ip)
         elif ansType == 2 or ansType == 5:
             if ans > 0 and ansType != queryType:
                 # if given a CNAME instead of answer being looked for, restart query with the CNAME
-                print("cname found: " + decodeName(response, offset)["name"][:-1])
-                reAnswer = findAnswer(f"{decodeName(response, offset)['name'][:-1]}", queryType)
+                reAnswer = findAnswer(f"{decodeName(response, offset)['name'][:-1]}", queryType, timeout)
                 answers = answers + reAnswer["data"]
             else:
-                # Type NS: get name server
+                # Type NS and CNAME: get name server
                 nameServer = {"name": name['name'], "ansType": ansType, "ansClass": ansClass, "ttl": ttl, "rdLength": rdLength, "data": decodeName(response, offset)["name"]}
-                print(nameServer)
                 answers.append(nameServer)
         offset += rdLength
 
@@ -186,22 +173,20 @@ def createQuery(domainName, queryType):
     return dnsHeader + dnsQuestion
 
 # find answer
-def findAnswer(domainName, queryType):
+def findAnswer(domainName, queryType, timeout):
     answer = False
+    #create query
     queryData = createQuery(domainName, queryType)
     query = {"queryName": formatDomain(domainName), "data": queryData}
     #read in root hints file
     rootHints = readHints()
-    # print(rootHints)
     nameServers = list(rootHints.keys())
     while not answer:
         # look for answer
-        # answer = list(rootHints.keys())[0]
-        for server in nameServers:
+        for index, server in enumerate(nameServers):
             #create socket
-            iterSock = socket(AF_INET, SOCK_DGRAM)
-            iterSock.settimeout(20)
-            print(server)
+            iterSock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            iterSock.settimeout(timeout)
             iterSock.connect((server, 53))
             iterSock.sendall(query["data"])
             data = None
@@ -209,92 +194,64 @@ def findAnswer(domainName, queryType):
             while data == None:
                 try:
                     data = iterSock.recv(1024)
-                    print("got data:")
-                    print(data)
-                except timeout:
+                except socket.timeout:
                     break
             iterSock.close()
-
+            print(index)
+            print(index == (len(nameServers) - 1))
             # check if response was recived
             if data != None:
                 #decode response
-                response = decodeResponse(data, query["queryName"], queryType)
-                #check if answer was found or an error was found
-                if response["header"]["ans"] > 0 or response["header"]["rcode"] != 0:
+                response = decodeResponse(data, query["queryName"], queryType, timeout)
+                #check if answer was found or an error was found (check for server error and no more servers)
+                if response["header"]["ans"] > 0 or (response["header"]["rcode"] != 0 and (response["header"]["rcode"] != 2 or (index == len(nameServers) - 1))):
                     answer = True
+                elif response["header"]["rcode"] == 2:
+                    # if server error an
+                    continue
                 else:
                     # update list of name servers to check
-                    nameServers = [ server["data"] for server in response["data"]]
-                    print("hola")
-                    print(nameServers)
+                    nameServers = [server["data"] for server in response["data"]]
                 break
+            elif index == (len(nameServers) - 1):
+                #check if timeout continuously occurs
+                response = {"Header": None, "data": [], "Timeout": True}
+                answer = True
     return response
 
 def main():
     #check number of command line args
     if len(sys.argv) < 2 :
-        errorFound("Invalid arguments\nUsage: resolver port")
+        errorFound("Invalid arguments\nUsage: resolver port [timeout=5]")
     host = '127.0.0.1'
-    port = int(sys.argv[1])
-    print(host, port)
-
-    # #read in root hints file
-    # rootHints = readHints()
-    # print(rootHints)
+    try:
+        port = int(sys.argv[1])
+    except ValueError:
+        errorFound("Invalid arguments\nUsage: resolver port [timeout=5]")
+    timeout = 5
+    if len(sys.argv) == 3:
+        try:
+            timeout = float(sys.argv[2])
+        except ValueError:
+            errorFound("Invalid arguments\nUsage: resolver port [timeout=5]")
 
     #create socket
-    sock = socket(AF_INET, SOCK_STREAM)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     #bind socket to host and port
     sock.bind((host, port))
-    print('socket binding complete')
+    print('Socket binding complete')
     #listen for connections
     sock.listen(1)
     while True:
         # create connection
         conn, address = sock.accept()
         query = conn.recv(1024)
+        print(f"Recieved request")
         query = pickle.loads(query)
-        # print(query)
-        response = findAnswer(query["domain"], query["type"] )
-        # #read in root hints file
-        # rootHints = readHints()
-        # print(rootHints)
-        # nameServers = list(rootHints.keys())
-        # while not answer:
-        #     # look for answer
-        #     # answer = list(rootHints.keys())[0]
-        #     for server in nameServers:
-        #         #create socket
-        #         iterSock = socket(AF_INET, SOCK_DGRAM)
-        #         iterSock.settimeout(20)
-        #         print(server)
-        #         iterSock.connect((server, 53))
-        #         iterSock.sendall(query["data"])
-        #         data = None
-        #         # wait for response from name server
-        #         while data == None:
-        #             try:
-        #                 data = iterSock.recv(1024)
-        #                 print("got data:")
-        #                 print(data)
-        #             except timeout:
-        #                 break
-        #         iterSock.close()
-
-        #         # check if response was recived
-        #         if data != None:
-        #             #decode response
-        #             response = decodeResponse(data, query["queryName"])
-        #             #check if answer was found or an error was found
-        #             if response["header"]["ans"] > 0 or response["header"]["rcode"] != 0:
-        #                 answer = True
-        #             else:
-        #                 # update list of name servers to check
-        #                 nameServers = [ server["data"] for server in response["data"]]
-        #                 print("hola")
-        #                 print(nameServers)
-        #             break
+        print("Searching for answers")
+        response = findAnswer(query["domain"], query["type"], timeout)
         conn.sendall(pickle.dumps(response))
+        print("Response sent")
         conn.close()
     sock.close()
 
