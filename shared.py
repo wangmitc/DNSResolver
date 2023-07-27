@@ -67,7 +67,7 @@ def createQuery(domainName, queryType):
     ans = 0
     auth = 0
     add = 0
-
+    
     # DNS header
     dnsHeader = struct.pack("!HHHHHH", query_id, flags, qst, ans, auth, add)
     #DNS question

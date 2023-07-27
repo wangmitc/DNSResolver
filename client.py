@@ -35,40 +35,45 @@ def queryResolver(domainName, host, port, timeout, queryType):
 
 def main():
     #check number of command line args
-    if len(sys.argv) < 4:
-        errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name [timeout=5]")
+    if len(sys.argv) < 5:
+        errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name type [timeout=5]")
     
     # take in command line args
     resolverIP = sys.argv[1]
     try:
         resolverPort = int(sys.argv[2])
     except ValueError:
-        errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name [timeout=5]")
+        errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name type [timeout=5]")
     resolverPort = int(sys.argv[2])
     domainName = sys.argv[3]
+    queryType = sys.argv[4]
     timeout = 5
-    queryType = 1
+
     # check domain name (only allow alphanumeric characters, hyphens and dots)
     if re.match(r"[^A-Za-z0-9\-\.]", domainName):
-        errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name [timeout=5]")
+        errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name type [timeout=5]")
 
     # check resolverIP 
     if re.match(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}", resolverIP) == None:
-        errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name [timeout=5]")
+        errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name type [timeout=5]")
 
     # check resolver port is in between (1024-65535) inclusive
     if resolverPort not in range(1024, 65536):
-        errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name [timeout=5]")
+        errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name type [timeout=5]")
     
-    if len(sys.argv) == 5:
-        timeout = sys.argv[4]
+    #check query type
+    if queryType not in DNS_RECORD_TYPES.values():
+        errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name type [timeout=5]")
+
+    if len(sys.argv) == 6:
+        timeout = sys.argv[5]
         try:
             timeout = float(timeout)
         except ValueError:
-            errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name [timeout=5]")
+            errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name type [timeout=5]")
     
     # intiate query to resolver
-    response = queryResolver(domainName, resolverIP, resolverPort, timeout, queryType)
+    response = queryResolver(domainName, resolverIP, resolverPort, timeout, list(DNS_RECORD_TYPES.keys())[list(DNS_RECORD_TYPES.values()).index(queryType)])
     results = decodeResponse(response)
     print(results)
 
