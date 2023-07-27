@@ -1,10 +1,9 @@
 import socket
 import sys
 import re
-import time
-from shared import errorFound, formatDomain, decodeResponse, createQuery
+from shared import errorFound, decodeResponse, createQuery
 
-# constants
+# CONSTANTS
 DNS_RECORD_TYPES = {1: "A", 2: "NS", 5: "CNAME", 12: "PTR", 15: "MX"}
 
 def queryResolver(domainName, host, port, timeout, queryType):
@@ -64,7 +63,7 @@ def main():
         errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name type [timeout=5]")
 
     # check resolver port is in between (1024-65535) inclusive
-    if resolverPort not in range(0, 65536):
+    if resolverPort not in range(1024, 65536):
         errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name type [timeout=5]")
 
     if len(sys.argv) == 6:
@@ -103,7 +102,6 @@ def main():
     print(f";{domainName} {queryType} IN\n")
 
     print(";; ANSWER SECTION:")
-    # if results["header"]["ans"] > 0:
     for i in range(len(results['data'])):
         print(results['data'][i]['data'])
 

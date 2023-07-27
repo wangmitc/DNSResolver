@@ -1,6 +1,15 @@
 import struct
 import random
 
+# CONSTANTS
+NAME_POINTER_MASK = 0xc0 #1100000000000000
+OPCODE_MASK = 0x7800     #0111100000000000
+AA_MASK = 0x0400         #0000010000000000
+TC_MASK = 0x0200         #0000001000000000
+RD_MASK = 0x0100         #0000000100000000
+RA_MASK = 0x0080         #0000000010000000
+RCODE_MASK = 0x000f      #0000000000001111
+
 def errorFound(message):
     print(f"Error: {message}")
     exit()
@@ -25,9 +34,7 @@ def decodeName(response, offset):
         # check if name field is pointer (first two bytes are 1)
         if char >= 192:
             # go to pointer address
-            # (char << 8) >= 0b1100000000000000
-            # offset = char << 8 + (next pointer bit) - 0b1100000000000000 - 1
-            offset = (char + struct.unpack_from(">B", response, offset + 1)[0] - 0xc0) - 1
+            offset = (char + struct.unpack_from(">B", response, offset + 1)[0] - NAME_POINTER_MASK) - 1
             isPointer = True
         else:
             nameChars.append(char)
@@ -53,9 +60,12 @@ def decodeName(response, offset):
 def formatDomain(domainName):
     dnsQuery = b''
     for domainPart in domainName.split("."):
+        #get the length of the part
         dnsQuery += struct.pack("!B", len(domainPart))
         for character in domainPart:
+            #place each charcter of the part after it
             dnsQuery += struct.pack("!c", character.encode('utf-8'))
+    #add null chacter to the end
     dnsQuery += struct.pack('!b', 0)
     return dnsQuery
 
@@ -88,18 +98,18 @@ def decodeResponse(response):
     # qr (0th bit in flags)
     msgHeader["id"] = flags >> 15
     # opcode (1-4th bits in flags)
-    msgHeader["opcode"] = (flags & 0x7800) >> 11
+    msgHeader["opcode"] = (flags & OPCODE_MASK) >> 11
     # aa (5th bit in flags)
-    msgHeader["aa"] = (flags & 0x0400) >> 10
+    msgHeader["aa"] = (flags & AA_MASK) >> 10
     # tc (6th bit in flags)
-    msgHeader["tc"] = (flags & 0x0200) >> 9
+    msgHeader["tc"] = (flags & TC_MASK) >> 9
     # rd (7th bit in flags)
-    msgHeader["rd"] = (flags & 0x0100) >> 8
+    msgHeader["rd"] = (flags & RD_MASK) >> 8
     # ra (8th bit in flags)
-    msgHeader["ra"] = (flags & 0x0080) >> 7
+    msgHeader["ra"] = (flags & RA_MASK) >> 7
     # (Note: reserved field is 9-11th bits. not needed)
     # rcode (12-15th bits in flags) 
-    msgHeader["rcode"] = (flags & 0x000f)
+    msgHeader["rcode"] = (flags & RCODE_MASK)
 
     # number of entries in each section
     qst = header[2]
@@ -117,13 +127,17 @@ def decodeResponse(response):
     #unpack question section
     offset = 12
     msgQuestion = {}
+
     qstName = decodeName(response, offset)
     msgQuestion["name"] = qstName["name"]
     offset += qstName['length']
+    
     qstType = struct.unpack_from(">H", response, offset)[0]
     msgQuestion["qstType"] = qstType
+
     qstClass = struct.unpack_from(">H", response, offset + 2)[0]
     msgQuestion["qstClass"] = qstClass
+
     offset += 4
     
     #unpack the answer/authority section data
@@ -141,18 +155,19 @@ def decodeResponse(response):
         ttl = ansFields[2]
         rdLength = ansFields[3]
         offset += 10
+
         if ansType == 1:
             # Type A: get ip
             ip = {"name": name['name'], "ansType": ansType, "ansClass": ansClass, "ttl": ttl, "rdLength": rdLength, "data": decodeIP(response, offset, rdLength)}
-
             answers.append(ip)
+
         elif ansType == 2 or ansType == 5 or ansType == 12 or ansType == 15:
+            # Type NS/CNAME/PTR/MX: get name
             nameServer = {"name": name['name'], "ansType": ansType, "ansClass": ansClass, "ttl": ttl, "rdLength": rdLength, "data": decodeName(response, offset)["name"]}
             answers.append(nameServer)
 
         offset += rdLength
     
     # filter out duplicate answers
-    answers = [dict(tAns) for tAns in {tuple(ans.items()) for ans in answers}]
     msg = {"header": msgHeader, "question": msgQuestion, "data": answers}
     return msg

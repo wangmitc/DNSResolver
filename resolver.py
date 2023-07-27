@@ -1,6 +1,7 @@
 import socket
 import sys
 import re
+import threading
 from shared import errorFound, createQuery, decodeResponse
 
 def readHints():
@@ -68,6 +69,12 @@ def findAnswer(query, timeout):
                 answer = True
     return data
 
+def searchQuery(query, timeout, conn):
+    response = findAnswer(query, timeout)
+    conn.sendall(response)
+    print("Response sent")
+    conn.close()
+
 def main():
     #check number of command line args
     if len(sys.argv) < 2 :
@@ -97,10 +104,9 @@ def main():
         query = conn.recv(1024)
         print(f"Recieved request")
         print("Searching for answers")
-        response = findAnswer(query, timeout)
-        conn.sendall(response)
-        print("Response sent")
-        conn.close()
+        # create a thread for each client
+        thread = threading.Thread(target=searchQuery, args=(query, timeout, conn))
+        thread.start()
     sock.close()
 
 if __name__ == "__main__":
