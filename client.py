@@ -1,6 +1,7 @@
 import socket
 import sys
 import re
+import time
 from shared import errorFound, formatDomain, decodeResponse, createQuery
 
 # constants
@@ -9,23 +10,19 @@ DNS_RECORD_TYPES = {1: "A", 2: "NS", 5: "CNAME", 12: "PTR", 15: "MX"}
 def queryResolver(domainName, host, port, timeout, queryType):
     # create socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # UDP
-    print(timeout)
     sock.settimeout(timeout)
     sock.connect((host, port))
 
     # construct DNS query
-    # query = {"domain": domainName, "type": 1}
     query = createQuery(domainName, queryType)
     # send query
-    # sock.sendall(pickle.dumps(query))
     sock.sendall(query)
     data = None
 
     # wait for response from resolver
     while data == None:
         try:
-            data = sock.recv(2048)
-            # response = pickle.loads(data)
+            data = sock.recv(1024)
         except socket.timeout:
             errorFound("Client Timeout")
 
@@ -67,7 +64,7 @@ def main():
         errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name type [timeout=5]")
 
     # check resolver port is in between (1024-65535) inclusive
-    if resolverPort not in range(1024, 65536):
+    if resolverPort not in range(0, 65536):
         errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name type [timeout=5]")
 
     if len(sys.argv) == 6:
@@ -80,7 +77,6 @@ def main():
     # intiate query to resolver
     response = queryResolver(domainName, resolverIP, resolverPort, timeout, list(DNS_RECORD_TYPES.keys())[list(DNS_RECORD_TYPES.values()).index(queryType)])
     results = decodeResponse(response)
-    print(results)
 
     # handle returned error codes
     if "Timeout" in results.keys():

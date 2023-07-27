@@ -6,7 +6,6 @@ def errorFound(message):
     exit()
 
 def decodeIP(response, offset, rdLength):
-
     #get chars of the ip
     ipChars = struct.unpack_from(f">{'B' * rdLength}", response, offset)
 
@@ -70,7 +69,8 @@ def createQuery(domainName, queryType):
 
     # DNS header
     dnsHeader = struct.pack("!HHHHHH", query_id, flags, qst, ans, auth, add)
-    #DNS question
+    
+    # DNS question
     dnsQuestion = formatDomain(domainName)
     dnsQuestion += struct.pack('!HH', queryType, 1)
     return dnsHeader + dnsQuestion
@@ -113,8 +113,8 @@ def decodeResponse(response):
 
     add = header[5]
     msgHeader["add"] = add
-    #skip question name
-    # offset = 16 + len(queryName)
+    
+    #unpack question section
     offset = 12
     msgQuestion = {}
     qstName = decodeName(response, offset)
@@ -125,13 +125,13 @@ def decodeResponse(response):
     qstClass = struct.unpack_from(">H", response, offset + 2)[0]
     msgQuestion["qstClass"] = qstClass
     offset += 4
-    #unpack the authority section data
+    
+    #unpack the answer/authority section data
     answers = []
     count = ans if ans > 0 else auth
     for i in range(count):
         # get name
         name = decodeName(response, offset)
-        print("Name")
         offset += name["length"]
 
         #get answer fields
@@ -144,7 +144,7 @@ def decodeResponse(response):
         if ansType == 1:
             # Type A: get ip
             ip = {"name": name['name'], "ansType": ansType, "ansClass": ansClass, "ttl": ttl, "rdLength": rdLength, "data": decodeIP(response, offset, rdLength)}
-            print(ip)
+
             answers.append(ip)
         elif ansType == 2 or ansType == 5 or ansType == 12 or ansType == 15:
             nameServer = {"name": name['name'], "ansType": ansType, "ansClass": ansClass, "ttl": ttl, "rdLength": rdLength, "data": decodeName(response, offset)["name"]}
