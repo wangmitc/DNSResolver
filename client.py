@@ -54,6 +54,10 @@ def main():
         # check domain IP 
         if re.match(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}", domainName) == None:
             errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name type [timeout=5]")
+        #change from a.b.c.d form to d.c.b.a.in-addr.arpa form
+        ipParts = domainName.split(".")
+        ipParts.reverse()
+        domainName = '.'.join(ipParts)
         domainName += ".in-addr.arpa"
     else:
         # check domain name (only allow alphanumeric characters, hyphens and dots)
@@ -74,7 +78,8 @@ def main():
             timeout = float(timeout)
         except ValueError:
             errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name type [timeout=5]")
-    
+    if timeout < 0:
+        errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name type [timeout=5]")
     # intiate query to resolver
     response = queryResolver(domainName, resolverIP, resolverPort, timeout, list(DNS_RECORD_TYPES.keys())[list(DNS_RECORD_TYPES.values()).index(queryType)])
     results = decodeResponse(response)
@@ -95,7 +100,6 @@ def main():
         else:
             # Other errors 
             errorFound(f"{results['header']['rcode']}")
-    
     # display results
     print(";; Got answer:")
     print(f";; ->>HEADER<<- opcode: {OP_CODE[results['header']['opcode']]}, status: {RCODE[results['header']['rcode']]}, id: {results['header']['id']}")

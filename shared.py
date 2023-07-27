@@ -161,11 +161,14 @@ def decodeResponse(response):
             ip = {"name": name['name'], "ansType": ansType, "ansClass": ansClass, "ttl": ttl, "rdLength": rdLength, "data": decodeIP(response, offset, rdLength)}
             answers.append(ip)
 
-        elif ansType == 2 or ansType == 5 or ansType == 12 or ansType == 15:
-            # Type NS/CNAME/PTR/MX: get name
+        elif ansType == 2 or ansType == 5 or ansType == 12:
+            # Type NS/CNAME/PTR: get name
             nameServer = {"name": name['name'], "ansType": ansType, "ansClass": ansClass, "ttl": ttl, "rdLength": rdLength, "data": decodeName(response, offset)["name"]}
             answers.append(nameServer)
-
+        elif ansType == 15:
+            # Type MX: get name (skip priority)
+            mailExchange = {"name": name['name'], "ansType": ansType, "ansClass": ansClass, "ttl": ttl, "rdLength": rdLength, "data": decodeName(response, offset + 2)["name"]}
+            answers.append(mailExchange)
         offset += rdLength
     
     # filter out duplicate answers

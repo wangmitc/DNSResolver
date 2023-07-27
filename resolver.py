@@ -90,7 +90,8 @@ def main():
             timeout = float(sys.argv[2])
         except ValueError:
             errorFound("Invalid arguments\nUsage: resolver port [timeout=5]")
-
+    if timeout < 0:
+        errorFound("Invalid arguments\nUsage: resolver port [timeout=5]")
     #create socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     #bind socket to host and port
