@@ -74,3 +74,85 @@ def createQuery(domainName, queryType):
     dnsQuestion = formatDomain(domainName)
     dnsQuestion += struct.pack('!HH', queryType, 1)
     return dnsHeader + dnsQuestion
+
+
+def decodeResponse(response, queryName):
+    # print(response)
+    print(queryName)
+    #unpack the header
+    header = struct.unpack_from(">HHHHHH", response, 0)
+    msgHeader = {}
+    #MessageID
+    msgHeader["id"] = header[0]
+    # flags
+    flags = header[1]
+    #use masks and bit shifts to extract each flag (bit 0 to 15)
+    # qr (0th bit in flags)
+    msgHeader["id"] = flags >> 15
+    # opcode (1-4th bits in flags)
+    msgHeader["opcode"] = (flags & 0x7800) >> 11
+    # aa (5th bit in flags)
+    msgHeader["aa"] = (flags & 0x0400) >> 10
+    # tc (6th bit in flags)
+    msgHeader["tc"] = (flags & 0x0200) >> 9
+    # rd (7th bit in flags)
+    msgHeader["rd"] = (flags & 0x0100) >> 8
+    # ra (8th bit in flags)
+    msgHeader["ra"] = (flags & 0x0080) >> 7
+    # (Note: reserved field is 9-11th bits. not needed)
+    # rcode (12-15th bits in flags) 
+    msgHeader["rcode"] = (flags & 0x000f)
+
+    # number of entries in each section
+    qst = header[2]
+    msgHeader["qst"] = qst
+
+    ans = header[3]
+    msgHeader["ans"] = ans
+
+    auth = header[4]
+    msgHeader["auth"] = auth
+
+    add = header[5]
+    msgHeader["add"] = add
+    #skip question name
+    # offset = 16 + len(queryName)
+    offset = 12
+    msgQuestion = {}
+    qstName = decodeName(response, offset)
+    msgQuestion["name"] = qstName["name"]
+    offset += qstName['length']
+    qstType = struct.unpack_from(">H", response, offset)[0]
+    msgQuestion["qstType"] = qstType
+    qstClass = struct.unpack_from(">H", response, offset + 2)[0]
+    msgQuestion["qstClass"] = qstClass
+    offset += 4
+    #unpack the authority section data
+    answers = []
+    count = ans if ans > 0 else auth
+    for i in range(count):
+        # get name
+        name = decodeName(response, offset)
+        offset += name["length"]
+
+        #get answer fields
+        ansFields = struct.unpack_from(">HHIH", response, offset)
+        ansType = ansFields[0]
+        ansClass = ansFields[1]
+        ttl = ansFields[2]
+        rdLength = ansFields[3]
+        offset += 10
+        if ansType == 1:
+            # Type A: get ip
+            ip = {"name": name['name'], "ansType": ansType, "ansClass": ansClass, "ttl": ttl, "rdLength": rdLength, "data": decodeIP(response, offset, rdLength)}
+            print(ip)
+            answers.append(ip)
+        elif ansType == 2 or ansType == 5:
+            nameServer = {"name": name['name'], "ansType": ansType, "ansClass": ansClass, "ttl": ttl, "rdLength": rdLength, "data": decodeName(response, offset)["name"]}
+            answers.append(nameServer)
+        offset += rdLength
+    
+    # filter out duplicate answers
+    answers = [dict(tAns) for tAns in {tuple(ans.items()) for ans in answers}]
+    msg = {"header": msgHeader, "question": msgQuestion, "data": answers}
+    return msg

@@ -4,12 +4,12 @@ import sys
 import re
 import random
 import struct
-from shared import errorFound, formatDomain, decodeResponse
+from shared import errorFound, formatDomain, decodeResponse, createQuery
 
 # constants
 DNS_RECORD_TYPES = {1: "A", 2: "NS", 5: "CNAME", 12: "PTR", 15: "MX"}
 
-def queryResolver(domainName, host, port, timeout):
+def queryResolver(domainName, host, port, timeout, queryType):
     # create socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # UDP
     print(timeout)
@@ -17,9 +17,11 @@ def queryResolver(domainName, host, port, timeout):
     sock.connect((host, port))
 
     # construct DNS query
-    query = {"domain": domainName, "type": 1}
+    # query = {"domain": domainName, "type": 1}
+    query = createQuery(domainName, queryType)
     # send query
-    sock.sendall(pickle.dumps(query))
+    # sock.sendall(pickle.dumps(query))
+    sock.sendall(query)
     data = None
 
     # wait for response from resolver
@@ -33,77 +35,6 @@ def queryResolver(domainName, host, port, timeout):
     # recieve response from resolver
     sock.close()
     return data
-
-# def decodeResponse(response, queryName):
-#     #unpack the header
-#     header = struct.unpack_from(">HHHHHH", response, 0)
-#     msgHeader = {}
-#     #MessageID
-#     msgHeader["id"] = header[0]
-#     # flags
-#     flags = header[1]
-#     #use masks and bit shifts to extract each flag (bit 0 to 15)
-#     # qr (0th bit in flags)
-#     msgHeader["id"] = flags >> 15
-#     # opcode (1-4th bits in flags)
-#     msgHeader["opcode"] = (flags & 0x7800) >> 11
-#     # aa (5th bit in flags)
-#     msgHeader["aa"] = (flags & 0x0400) >> 10
-#     # tc (6th bit in flags)
-#     msgHeader["tc"] = (flags & 0x0200) >> 9
-#     # rd (7th bit in flags)
-#     msgHeader["rd"] = (flags & 0x0100) >> 8
-#     # ra (8th bit in flags)
-#     msgHeader["ra"] = (flags & 0x0080) >> 7
-#     # (Note: reserved field is 9-11th bits. not needed)
-#     # rcode (12-15th bits in flags) 
-#     msgHeader["rcode"] = (flags & 0x000f)
-
-#     # number of entries in each section
-#     qst = header[2]
-#     msgHeader["qst"] = qst
-
-#     ans = header[3]
-#     msgHeader["ans"] = ans
-
-#     auth = header[4]
-#     msgHeader["auth"] = auth
-
-#     add = header[5]
-#     msgHeader["add"] = add
-#     #skip question name
-#     offset = 16 + len(queryName)
-    
-#     #unpack the authority section data
-#     answers = []
-#     count = ans if ans > 0 else auth
-#     for i in range(count):
-#         # get name
-#         name = decodeName(response, offset)
-#         offset += name["length"]
-
-#         #get answer fields
-#         ansFields = struct.unpack_from(">HHIH", response, offset)
-#         ansType = ansFields[0]
-#         ansClass = ansFields[1]
-#         ttl = ansFields[2]
-#         rdLength = ansFields[3]
-#         offset += 10
-#         print(ansType)
-#         if ansType == 1:
-#             # Type A: get ip
-#             ip = {"name": name['name'], "ansType": ansType, "ansClass": ansClass, "ttl": ttl, "rdLength": rdLength, "data": decodeIP(response, offset, rdLength)}
-#             answers.append(ip)
-#         elif ansType == 2 or ansType == 5:
-#             # Type NS and CNAME: get name server
-#             nameServer = {"name": name['name'], "ansType": ansType, "ansClass": ansClass, "ttl": ttl, "rdLength": rdLength, "data": decodeName(response, offset)["name"]}
-#             answers.append(nameServer)
-#         offset += rdLength
-    
-#     # filter out duplicate answers
-#     answers = [dict(tAns) for tAns in {tuple(ans.items()) for ans in answers}]
-#     msg = {"header": msgHeader, "data": answers}
-#     return msg
 
 def main():
     #check number of command line args
@@ -119,6 +50,7 @@ def main():
     resolverPort = int(sys.argv[2])
     domainName = sys.argv[3]
     timeout = 5
+    queryType = 1
     # check domain name (only allow alphanumeric characters, hyphens and dots)
     if re.match(r"[^A-Za-z0-9\-\.]", domainName):
         errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name [timeout=5]")
@@ -139,7 +71,7 @@ def main():
             errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name [timeout=5]")
     
     # intiate query to resolver
-    response = queryResolver(domainName, resolverIP, resolverPort, timeout)
+    response = queryResolver(domainName, resolverIP, resolverPort, timeout, queryType)
     results = decodeResponse(response, formatDomain(domainName))
     print(results)
 
