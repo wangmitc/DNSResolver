@@ -78,7 +78,7 @@ def main():
             timeout = float(timeout)
         except ValueError:
             errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name type [timeout=5]")
-    if timeout < 0:
+    if timeout <= 0:
         errorFound("Invalid arguments\nUsage: client resolver_ip resolver_port name type [timeout=5]")
     # intiate query to resolver
     response = queryResolver(domainName, resolverIP, resolverPort, timeout, list(DNS_RECORD_TYPES.keys())[list(DNS_RECORD_TYPES.values()).index(queryType)])
