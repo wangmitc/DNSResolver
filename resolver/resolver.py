@@ -3,6 +3,7 @@ import pickle
 import sys
 import re
 import struct
+import random
 
 def errorFound(message):
     print(f"Error: {message}")
@@ -27,6 +28,7 @@ def readHints():
     return rootNamesToIp
 
 def decodeIP(response, offset, rdLength):
+
     #get chars of the ip
     ipChars = struct.unpack_from(f">{'B' * rdLength}", response, offset)
 
@@ -72,16 +74,16 @@ def decodeName(response, offset):
     # name section olength is variable as it is could be a pointer (2 bytes) or full domain name (variable bytes)
     return {"name": name[1:], "length": (len(nameChars) + 1) if not isPointer else 2}
 
-def decodeResponse(response, queryName):
+def decodeResponse(response, queryName, queryType):
     #unpack the header
     header = struct.unpack_from(">HHHHHH", response, 0)
-    print(header)
+    # print(header)
     msgHeader = {}
     #MessageID
     msgHeader["id"] = header[0]
     # flags
     flags = header[1]
-    print(flags)
+    # print(flags)
     #use masks and bit shifts to extract each flag (bit 0 to 15)
     # qr (0th bit in flags)
     msgHeader["id"] = flags >> 15
@@ -111,13 +113,15 @@ def decodeResponse(response, queryName):
 
     add = header[5]
     msgHeader["add"] = add
-
+    print(header)
     #skip question section
     offset = 16 + len(queryName)
     
     #unpack the authority section data
     answers = []
     count = ans if ans > 0 else auth
+    print(f"ans {ans}, auth {auth}, ")
+    print(f"query type: {queryType}")
     for i in range(count):
         # get name
         name = decodeName(response, offset)
@@ -125,28 +129,106 @@ def decodeResponse(response, queryName):
 
         #get answer fields
         ansFields = struct.unpack_from(">HHIH", response, offset)
+        # print(ansFields)
         ansType = ansFields[0]
         ansClass = ansFields[1]
         ttl = ansFields[2]
         rdLength = ansFields[3]
         offset += 10
+        print(f"ansType {ansType}")
+        print(decodeIP(response, offset, rdLength))
         if ansType == 1:
+            print(ansClass)
             # Type A: get ip
             print("found answer")
             ip = {"name": name['name'], "ansType": ansType, "ansClass": ansClass, "ttl": ttl, "rdLength": rdLength, "data": decodeIP(response, offset, rdLength)}
             answers.append(ip)
+        elif ansType == 2 or ansType == 5:
+            if ans > 0 and ansType != queryType:
+                # if given a CNAME instead of answer being looked for, restart query with the CNAME
+                print("cname found: " + decodeName(response, offset)["name"][:-1])
+                reAnswer = findAnswer(f"{decodeName(response, offset)['name'][:-1]}", queryType)
+                answers = answers + reAnswer["data"]
+            else:
+                # Type NS: get name server
+                nameServer = {"name": name['name'], "ansType": ansType, "ansClass": ansClass, "ttl": ttl, "rdLength": rdLength, "data": decodeName(response, offset)["name"]}
+                print(nameServer)
+                answers.append(nameServer)
+        offset += rdLength
 
-        if ansType == 2:
-            # Type NS: get name server
-            nameServer = {"name": name['name'], "ansType": ansType, "ansClass": ansClass, "ttl": ttl, "rdLength": rdLength, "data": decodeName(response, offset)["name"]}
-            print(nameServer)
-            answers.append(nameServer)
-            offset += rdLength
-
-    print(answers)
+    # filter out duplicate answers
+    answers = [dict(tAns) for tAns in {tuple(ans.items()) for ans in answers}]
     msg = {"header": msgHeader, "data": answers}
     return msg
-    
+
+def formatDomain(domainName):
+    dnsQuery = b''
+    for domainPart in domainName.split("."):
+        dnsQuery += struct.pack("!B", len(domainPart))
+        for character in domainPart:
+            dnsQuery += struct.pack("!c", character.encode('utf-8'))
+    dnsQuery += struct.pack('!b', 0)
+    return dnsQuery
+
+def createQuery(domainName, queryType):
+    query_id = random.randint(0, 65535)
+    flags = 0
+    qst = 1
+    ans = 0
+    auth = 0
+    add = 0
+
+    # DNS header
+    dnsHeader = struct.pack("!HHHHHH", query_id, flags, qst, ans, auth, add)
+    #DNS question
+    dnsQuestion = formatDomain(domainName)
+    dnsQuestion += struct.pack('!HH', queryType, 1)
+    return dnsHeader + dnsQuestion
+
+# find answer
+def findAnswer(domainName, queryType):
+    answer = False
+    queryData = createQuery(domainName, queryType)
+    query = {"queryName": formatDomain(domainName), "data": queryData}
+    #read in root hints file
+    rootHints = readHints()
+    # print(rootHints)
+    nameServers = list(rootHints.keys())
+    while not answer:
+        # look for answer
+        # answer = list(rootHints.keys())[0]
+        for server in nameServers:
+            #create socket
+            iterSock = socket(AF_INET, SOCK_DGRAM)
+            iterSock.settimeout(20)
+            print(server)
+            iterSock.connect((server, 53))
+            iterSock.sendall(query["data"])
+            data = None
+            # wait for response from name server
+            while data == None:
+                try:
+                    data = iterSock.recv(1024)
+                    print("got data:")
+                    print(data)
+                except timeout:
+                    break
+            iterSock.close()
+
+            # check if response was recived
+            if data != None:
+                #decode response
+                response = decodeResponse(data, query["queryName"], queryType)
+                #check if answer was found or an error was found
+                if response["header"]["ans"] > 0 or response["header"]["rcode"] != 0:
+                    answer = True
+                else:
+                    # update list of name servers to check
+                    nameServers = [ server["data"] for server in response["data"]]
+                    print("hola")
+                    print(nameServers)
+                break
+    return response
 
 def main():
     #check number of command line args
@@ -156,9 +238,9 @@ def main():
     port = int(sys.argv[1])
     print(host, port)
 
-    #read in root hints file
-    rootHints = readHints()
-    print(rootHints)
+    # #read in root hints file
+    # rootHints = readHints()
+    # print(rootHints)
 
     #create socket
     sock = socket(AF_INET, SOCK_STREAM)
@@ -168,47 +250,50 @@ def main():
     #listen for connections
     sock.listen(1)
     while True:
-        answer = False
-        nameServers = list(rootHints.keys())
         # create connection
         conn, address = sock.accept()
         query = conn.recv(1024)
         query = pickle.loads(query)
-        print(query)
-        while not answer:
-            # look for answer
-            # answer = list(rootHints.keys())[0]
-            for server in nameServers:
-                #create socket
-                iterSock = socket(AF_INET, SOCK_DGRAM)
-                iterSock.settimeout(20)
-                print(server)
-                iterSock.connect((server, 53))
-                iterSock.sendall(query["data"])
-                data = None
-                # wait for response from name server
-                while data == None:
-                    try:
-                        data = iterSock.recv(1024)
-                        print("got data:")
-                        print(data)
-                    except timeout:
-                        break
-                iterSock.close()
+        # print(query)
+        response = findAnswer(query["domain"], query["type"] )
+        # #read in root hints file
+        # rootHints = readHints()
+        # print(rootHints)
+        # nameServers = list(rootHints.keys())
+        # while not answer:
+        #     # look for answer
+        #     # answer = list(rootHints.keys())[0]
+        #     for server in nameServers:
+        #         #create socket
+        #         iterSock = socket(AF_INET, SOCK_DGRAM)
+        #         iterSock.settimeout(20)
+        #         print(server)
+        #         iterSock.connect((server, 53))
+        #         iterSock.sendall(query["data"])
+        #         data = None
+        #         # wait for response from name server
+        #         while data == None:
+        #             try:
+        #                 data = iterSock.recv(1024)
+        #                 print("got data:")
+        #                 print(data)
+        #             except timeout:
+        #                 break
+        #         iterSock.close()
 
-                # check if response was recived
-                if data != None:
-                    #decode response
-                    response = decodeResponse(data, query["queryName"])
-                    #check if answer was found or an error was found
-                    if response["header"]["ans"] > 0 or response["header"]["rcode"] != 0:
-                        answer = True
-                    else:
-                        # update list of name servers to check
-                        nameServers = [ server["data"] for server in response["data"]]
-                        print("hola")
-                        print(nameServers)
-                    break
+        #         # check if response was recived
+        #         if data != None:
+        #             #decode response
+        #             response = decodeResponse(data, query["queryName"])
+        #             #check if answer was found or an error was found
+        #             if response["header"]["ans"] > 0 or response["header"]["rcode"] != 0:
+        #                 answer = True
+        #             else:
+        #                 # update list of name servers to check
+        #                 nameServers = [ server["data"] for server in response["data"]]
+        #                 print("hola")
+        #                 print(nameServers)
+        #             break
         conn.sendall(pickle.dumps(response))
         conn.close()
     sock.close()

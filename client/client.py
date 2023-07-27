@@ -13,30 +13,30 @@ def errorFound(message):
     print(f"Error: {message}")
     exit()
 
-def formatDomain(domainName):
-    dnsQuery = b''
-    for domainPart in domainName.split("."):
-        dnsQuery += struct.pack("!B", len(domainPart))
-        for character in domainPart:
-            dnsQuery += struct.pack("!c", character.encode('utf-8'))
-    dnsQuery += struct.pack('!b', 0)
-    return dnsQuery
+# def formatDomain(domainName):
+#     dnsQuery = b''
+#     for domainPart in domainName.split("."):
+#         dnsQuery += struct.pack("!B", len(domainPart))
+#         for character in domainPart:
+#             dnsQuery += struct.pack("!c", character.encode('utf-8'))
+#     dnsQuery += struct.pack('!b', 0)
+#     return dnsQuery
 
 
-def createQuery(domainName):
-    query_id = random.randint(0, 65535)
-    flags = 0
-    qst = 1
-    ans = 0
-    auth = 0
-    add = 0
+# def createQuery(domainName):
+#     query_id = random.randint(0, 65535)
+#     flags = 0
+#     qst = 1
+#     ans = 0
+#     auth = 0
+#     add = 0
 
-    # DNS header
-    dnsHeader = struct.pack("!HHHHHH", query_id, flags, qst, ans, auth, add)
-    #DNS question
-    dnsQuestion = formatDomain(domainName)
-    dnsQuestion += struct.pack('!HH', 1, 1)
-    return dnsHeader + dnsQuestion
+#     # DNS header
+#     dnsHeader = struct.pack("!HHHHHH", query_id, flags, qst, ans, auth, add)
+#     #DNS question
+#     dnsQuestion = formatDomain(domainName)
+#     dnsQuestion += struct.pack('!HH', 1, 1)
+#     return dnsHeader + dnsQuestion
 
 
 
@@ -47,10 +47,11 @@ def queryResolver(domainName, host, port):
     sock.connect((host, port))
 
     # construct DNS query
-    queryData = createQuery(domainName)
-    #query = {"name":domainName,"type":"A", "class": "IN"}
-    # queryData = pickle.dumps(query)
-    query = {"queryName": formatDomain(domainName), "data": queryData}
+    # queryData = createQuery(domainName)
+    # #query = {"name":domainName,"type":"A", "class": "IN"}
+    # # queryData = pickle.dumps(query)
+    # query = {"queryName": formatDomain(domainName), "data": queryData}
+    query = {"domain": domainName, "type": 1}
     # send query
     # sock.sendall(queryData)
     sock.sendall(pickle.dumps(query))
@@ -93,9 +94,20 @@ def main():
     # intiate query to resolver
     results = queryResolver(domainName, resolverIP, resolverPort)
     print(results)
+    # handle returned error codes
     if results["header"]["rcode"] != 0:
-        print("error")
-        exit()
+        if results["header"]["rcode"] == 1:
+            #format error
+            errorFound("Invalid DNS query format")
+        elif results["header"]["rcode"] == 2:
+            # Server Error
+            errorFound(f"Unable to connect to {domainName}")
+        elif results["header"]["rcode"] == 3:
+            # Name Error
+            errorFound(f"Server can't find {domainName}")
+        else:
+            # Other errors 
+            errorFound(f"{results['header']['rcode']}")
     # display results
     print(";; Got answer:")
     print(f";; ->>HEADER<<- opcode: {results['header']['opcode']}")
